@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-pearl: #F7F5F2;
+    --color-marcos-red: #841937;
+    --color-marcos-gold: #C9A227;
+    --color-ink: #2A2224;
+  }
+
+  body {
+    background-color: var(--color-pearl);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

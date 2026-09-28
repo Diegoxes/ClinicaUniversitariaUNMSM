@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  ADMIN
+  STAFF
+}
+
+enum UnitRole {
+  THERAPIST
+  SUPERVISOR
+}
+
+enum UnitModuleType {
+  REHABILITATION
+  CONSULTATION
+}
+
+enum UserTariffType {
+  PARTICULAR
+  WORKER
+  STUDENT
+}
+
+enum IntakePath {
+  EXTERNAL
+  REFERRED
+}
+
+enum PatientVisitType {
+  NEW
+  RETURNING
+}
+
+enum RehabPlanStatus {
+  IN_PROGRESS
+  COMPLETED
+  DISCHARGE
+  MEDICAL_REEVAL
+}
+
+enum PlanOrigin {
+  THERAPIST_EVAL
+  MEDICAL_INDICATION
+}
+
+enum PlanClosureReason {
+  DISCHARGE
+  MEDICAL_REEVAL
+}
+
+enum QueueEntryStatus {
+  WAITING
+  IN_PROGRESS
+  DONE
+}
+
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units   Unit[]
+  patients Patient[]
+  staff   StaffUser[]
+}
+
+model Unit {
+  id         String         @id @default(uuid())
+  clinicId   String
+  code       String
+  name       String
+  moduleType UnitModuleType
+  active     Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  clinic              Clinic                 @relation(fields: [clinicId], references: [id])
+  staffAssignments    StaffUnitRole[]
+  visits              UnitVisit[]
+  rehabPlans          RehabPlan[]
+  dayQueueEntries     DayQueueEntry[]
+  treatmentCatalog    TreatmentCatalogItem[]
+  settings            UnitSetting?
+
+  @@unique([clinicId, code])
+  @@index([clinicId])
+}
+
+model StaffUser {
+  id           String     @id @default(uuid())
+  clinicId     String
+  username     String     @unique
+  passwordHash String
+  fullName     String
+  globalRole   GlobalRole @default(STAFF)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  clinic           Clinic            @relation(fields: [clinicId], references: [id])
+  unitAssignments  StaffUnitRole[]
+  rehabSessions    RehabSession[]
+  refreshTokens    RefreshToken[]
+
+  @@index([clinicId])
+}
+
+model StaffUnitRole {
+  id      String   @id @default(uuid())
+  userId  String
+  unitId  String
+  role    UnitRole
+
+  user StaffUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unit Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, unitId])
+  @@index([unitId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user StaffUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Patient {
+  id             String         @id @default(uuid())
+  clinicId       String
+  firstName      String
+  lastName       String
+  age            Int
+  phone          String?
+  district       String
+  documentNumber String?
+  tariffType     UserTariffType
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  clinic          Clinic          @relation(fields: [clinicId], references: [id])
+  visits          UnitVisit[]
+  rehabPlans      RehabPlan[]
+  dayQueueEntries DayQueueEntry[]
+
+  @@unique([clinicId, documentNumber])
+  @@index([clinicId])
+  @@index([clinicId, lastName, firstName])
+}
+
+model UnitVisit {
+  id                   String           @id @default(uuid())
+  clinicId             String
+  unitId               String
+  patientId            String
+  visitDate            DateTime         @default(now())
+  intakePath           IntakePath
+  diagnosis            String
+  visitType            PatientVisitType
+  referralReason       String?
+  referralInstructions String?
+  cashTicket           String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  unit        Unit           @relation(fields: [unitId], references: [id])
+  patient     Patient        @relation(fields: [patientId], references: [id])
+  rehabPlans  RehabPlan[]
+  sessions    RehabSession[]
+
+  @@index([unitId, visitDate])
+  @@index([patientId])
+  @@index([clinicId, unitId])
+}
+
+model RehabPlan {
+  id              String          @id @default(uuid())
+  clinicId        String
+  unitId          String
+  patientId       String
+  visitId         String?
+  plannedSessions Int
+  origin          PlanOrigin      @default(THERAPIST_EVAL)
+  status          RehabPlanStatus @default(IN_PROGRESS)
+  closureReason   PlanClosureReason?
+  closureNote     String?
+  closedAt        DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  unit     Unit           @relation(fields: [unitId], references: [id])
+  patient  Patient        @relation(fields: [patientId], references: [id])
+  visit    UnitVisit?     @relation(fields: [visitId], references: [id])
+  sessions RehabSession[]
+
+  @@index([patientId, status])
+  @@index([unitId])
+  @@index([clinicId, unitId])
+}
+
+model RehabSession {
+  id                 String   @id @default(uuid())
+  clinicId           String
+  unitId             String
+  planId             String
+  visitId            String?
+  professionalId     String
+  sessionDate        DateTime @default(now())
+  painIn             Int?
+  painOut            Int?
+  painOmissionReason String?
+  note               String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  plan         RehabPlan          @relation(fields: [planId], references: [id])
+  visit        UnitVisit?         @relation(fields: [visitId], references: [id])
+  professional StaffUser          @relation(fields: [professionalId], references: [id])
+  treatments   SessionTreatment[]
+
+  @@index([planId])
+  @@index([unitId, sessionDate])
+  @@index([clinicId, unitId])
+}
+
+model TreatmentCatalogItem {
+  id        String   @id @default(uuid())
+  unitId    String
+  name      String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit     Unit               @relation(fields: [unitId], references: [id])
+  sessions SessionTreatment[]
+
+  @@index([unitId, active])
+}
+
+model SessionTreatment {
+  id           String  @id @default(uuid())
+  sessionId    String
+  catalogItemId String?
+  otherText    String?
+
+  session     RehabSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  catalogItem TreatmentCatalogItem? @relation(fields: [catalogItemId], references: [id])
+
+  @@index([sessionId])
+}
+
+model DayQueueEntry {
+  id        String           @id @default(uuid())
+  clinicId  String
+  unitId    String
+  patientId String
+  queueDate DateTime         @db.Date
+  position  Int
+  status    QueueEntryStatus @default(WAITING)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  unit    Unit    @relation(fields: [unitId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([unitId, queueDate, patientId])
+  @@index([unitId, queueDate, position])
+  @@index([clinicId, unitId])
+}
+
+model UnitSetting {
+  id                     String @id @default(uuid())
+  unitId                 String @unique
+  defaultPlannedSessions Int    @default(8)
+  painScaleHelpText      String @default("0 = sin dolor, 10 = dolor máximo")
+  intakeHelpText         String @default("Seleccione la vía de ingreso del paciente")
+
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+}
